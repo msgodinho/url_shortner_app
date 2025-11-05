@@ -1,0 +1,42 @@
+# NÃO PRECISA MAIS DE 'version'
+
+services:
+  # Serviço 1: Redis (Cache e Contador Atômico)
+  redis:
+    image: redis:alpine
+    container_name: url_redis
+    # Mapeia a porta do contêiner (6379) para a do seu computador (6379)
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - app_network
+
+  # Serviço 2: Cassandra (Banco de Dados Principal)
+  cassandra:
+    image: cassandra:latest
+    container_name: url_cassandra
+    # Mapeia a porta do contêiner (9042) para a do seu computador (9042)
+    ports:
+      - "9042:9042"
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    environment:
+      - CASSANDRA_CLUSTER_NAME=MyCluster
+      - CASSANDRA_DC=MyDC
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+      - HEAP_NEWSIZE=128M
+      - MAX_HEAP_SIZE=1024M
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
