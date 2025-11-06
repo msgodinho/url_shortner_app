@@ -9,9 +9,6 @@ class Settings(BaseSettings):
     cassandra_host: str = "cassandra"
     keyspace: str = "url_shortener"
 
-    hashids_salt: str = "este-e-um-salt-secreto-do-video"
-    hashids_min_length: int = 6
-
     class Config:
         # Permite que as variáveis de ambiente (ex: REDIS_HOST) sejam lidas
         env_file = ".env"

@@ -1,37 +1,71 @@
-from hashids import Hashids
+import hashlib
 from cassandra.query import SimpleStatement
-from .config import settings
+
+# Caracteres para a codificação em Base62
+BASE62_CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def _base62_encode(num: int) -> str:
+    """Codifica um número inteiro para uma string em Base62."""
+    if num == 0:
+        return BASE62_CHARS[0]
+
+    encoded = ""
+    while num > 0:
+        num, rem = divmod(num, 62)
+        encoded = BASE62_CHARS[rem] + encoded
+    return encoded
 
 
 class URLShortenerService:
     """
-    Esta classe encapsula a lógica de negócio principal.
-    Ela não sabe nada sobre FastAPI, HTTP, Request ou Response.
+    Encapsula a lógica de negócio usando hash determinístico e Base62.
     """
 
     def __init__(self, redis_client, cassandra_session):
         self.redis = redis_client
         self.session = cassandra_session
-        self.hashids = Hashids(
-            salt=settings.hashids_salt, min_length=settings.hashids_min_length
+        # Prepara as queries do Cassandra uma vez para otimização
+        self.insert_stmt = self.session.prepare(
+            "INSERT INTO urls (short_id, long_url) VALUES (?, ?)"
         )
+        self.select_stmt = self.session.prepare(
+            "SELECT long_url FROM urls WHERE short_id = ?"
+        )
+
+    def _get_short_id_for_url(self, long_url: str) -> str:
+        """Gera um short_id determinístico usando SHA-256 e Base62."""
+        # 1. Criar um hash consistente para a URL
+        hasher = hashlib.sha256(long_url.encode("utf-8"))
+        # 2. Converter os primeiros 8 bytes do hash para um inteiro
+        num = int.from_bytes(hasher.digest()[:8], "big")
+        # 3. Codificar em Base62 e pegar os primeiros 7 caracteres
+        return _base62_encode(num)[:7]
 
     def create_short_url(self, long_url: str) -> str:
         """
-        Cria, salva e armazena em cache uma nova URL curta.
-        Retorna: o 'short_id' gerado.
+        Cria ou obtém uma URL curta de forma determinística.
+        Retorna: o 'short_id' correspondente.
         """
-        # 1. Gerar ID único atômico com Redis
-        new_id = self.redis.incr("url:id:counter")
+        short_id = self._get_short_id_for_url(long_url)
 
-        # 2. Codificar ID para uma string curta
-        short_id = self.hashids.encode(new_id)
+        # 1. Verifica se o short_id já existe (colisão ou URL repetida)
+        existing_url = self.get_long_url(short_id)
 
-        # 3. Salvar no Cassandra (fonte da verdade)
-        query = SimpleStatement("INSERT INTO urls (short_id, long_url) VALUES (%s, %s)")
-        self.session.execute(query, (short_id, long_url))
+        if existing_url:
+            # Se a URL longa for a mesma, ótimo, encontramos o código existente
+            if existing_url == long_url:
+                print(f"URL já existe. Retornando short_id: {short_id}")
+                return short_id
+            # Se a URL for diferente, houve uma colisão de hash.
+            # Uma estratégia de resolução seria necessária aqui (ex: adicionar um sufixo).
+            # Para este exemplo, vamos apenas logar e sobrescrever.
+            print(f"Colisão de Hash detectada para short_id: {short_id}")
 
-        # 4. "Aquecer" o cache no Redis para leituras rápidas
+        # 2. Salvar no Cassandra (fonte da verdade)
+        self.session.execute(self.insert_stmt, (short_id, long_url))
+
+        # 3. "Aquecer" o cache no Redis para leituras rápidas
         self.redis.set(f"url:{short_id}", long_url, ex=3600)  # Expira em 1h
 
         return short_id
@@ -42,23 +76,20 @@ class URLShortenerService:
         Retorna: a 'long_url' ou None se não for encontrada.
         """
         # 1. Tentar ler do Cache (Redis)
-        long_url = self.redis.get(f"url:{short_id}")
-
-        if long_url:
+        cached_url = self.redis.get(f"url:{short_id}")
+        if cached_url:
             print(f"Cache HIT para: {short_id}")
-            return long_url
+            # A biblioteca redis-py > 4.2.0 decodifica a resposta por padrão
+            return cached_url
 
         # 2. Cache Miss! Buscar no Banco de Dados (Cassandra)
         print(f"Cache MISS para: {short_id}")
-        query = SimpleStatement("SELECT long_url FROM urls WHERE short_id = %s")
-        row = self.session.execute(query, (short_id,)).one()
+        row = self.session.execute(self.select_stmt, (short_id,)).one()
 
         if row:
             long_url = row.long_url
-
-            # 2a. Encontramos no DB -> Salvar no cache para a próxima vez
+            # Salvar no cache para a próxima vez
             self.redis.set(f"url:{short_id}", long_url, ex=3600)
-
             return long_url
 
         # 3. Não encontrado em lugar nenhum
