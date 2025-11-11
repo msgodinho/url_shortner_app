@@ -29,14 +29,13 @@ services:
     networks:
       - app_network
 
-  # --- Serviços da Aplicação Atualizados ---
+  # --- Serviços da Aplicação ---
 
   app1:
     build:
-      context: . # O contexto é a raiz (onde está o pyproject.toml)
-      dockerfile: app/Dockerfile # O caminho para o Dockerfile
+      context: .
+      dockerfile: app/Dockerfile
     container_name: url_app1
-    # As variáveis de ambiente agora são lidas pelo config.py
     environment:
       - REDIS_HOST=redis
       - CASSANDRA_HOST=cassandra
