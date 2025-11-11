@@ -8,10 +8,6 @@ from .database import (
 )
 from .routes import router as url_router
 
-# -----------------------------------------------------------------
-# 👇 A MUDANÇA ESTÁ AQUI 👇
-# -----------------------------------------------------------------
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,7 +22,7 @@ async def lifespan(app: FastAPI):
     connect_to_cassandra()
     print("Conexões estabelecidas.")
 
-    yield  # Este é o ponto onde a aplicação fica em execução
+    yield
 
     # --- SHUTDOWN ---
     print("Fechando conexões...")
@@ -35,11 +31,6 @@ async def lifespan(app: FastAPI):
     print("Conexões fechadas.")
 
 
-# -----------------------------------------------------------------
-# 👆 FIM DA MUDANÇA 👆
-# -----------------------------------------------------------------
-
-# O 'lifespan' é passado diretamente para o construtor do FastAPI
 app = FastAPI(
     title="Encurtador de URL",
     description="Implementação com FastAPI, Redis e Cassandra (Refatorada com SOLID e UV)",
@@ -48,7 +39,6 @@ app = FastAPI(
 
 # --- Inclusão das Rotas ---
 
-# Inclui todas as rotas definidas em routes.py
 app.include_router(url_router)
 
 

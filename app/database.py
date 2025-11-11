@@ -37,7 +37,7 @@ def connect_to_redis():
 
 
 def connect_to_cassandra():
-    """Tenta se conectar ao Cassandra e inicializa o keyspace/tabela."""
+    """Tenta se conectar ao Cassandra e inicializa o keyspace."""
     session = None
     cluster = None
     while session is None:
@@ -95,7 +95,6 @@ def get_redis() -> redis.Redis:
     return connections.redis_client
 
 
-# 👇 MUDANÇA 3: Corrigir o type-hint de retorno aqui
 def get_cassandra_session() -> Session:
     """Retorna a sessão do Cassandra. Usado para injeção de dependência."""
     if not connections.cassandra_session:

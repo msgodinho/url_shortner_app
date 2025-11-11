@@ -10,10 +10,8 @@ class Settings(BaseSettings):
     keyspace: str = "url_shortener"
 
     class Config:
-        # Permite que as variáveis de ambiente (ex: REDIS_HOST) sejam lidas
         env_file = ".env"
         env_file_encoding = "utf-8"
 
 
-# Instância única das configurações, importada por outros módulos
 settings = Settings()
